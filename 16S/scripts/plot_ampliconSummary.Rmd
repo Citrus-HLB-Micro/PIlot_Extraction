@@ -176,19 +176,19 @@ BactOrder
 plot_richness(physeq.prune.rarefy, x = "ExtractByTmt", color = "ExtractByTmt", measures = c("Shannon")) + 
   geom_boxplot() +
   theme_bw() + ggtitle("Alpha diversity plot by sample (Shannon)") + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(plot.title = element_text(hjust = 0.5),axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
   geom_point(size=5, alpha=0.8)
 ```
 
 ###STEP12:Taxonomy Barplot
 
-Taxonomy barplot by sample (Class level)
+Taxonomy barplot by sample (Phylum level)
 
 ```{r fig.align='center'}
-plot_bar(physeq.prune.rarefy, x = "Sample", y = "Abundance", fill ="Class") + 
-  geom_bar(aes(color=Class, fill=Class), stat="identity", position="stack") +
-  ggtitle("Taxonomy barplot by sample (Phylum Class)") + 
-  theme(plot.title = element_text(hjust = 0.5))
+plot_bar(physeq.prune.rarefy, x = "Sample", y = "Abundance", fill ="Phylum") + 
+  geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack") +
+  ggtitle("Taxonomy barplot by sample (Phylum )") + 
+  theme(plot.title = element_text(hjust = 0.5),axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
 ###Beta Diversity
