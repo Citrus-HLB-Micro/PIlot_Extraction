@@ -199,7 +199,7 @@ physeq.prune.rarefy.ps.ord <- ordinate(physeq.prune.rarefy, "PCoA", "unifrac")
 ```
 
 ```{r}
-plot_ordination(physeq.prune.rarefy, physeq.prune.rarefy.ps.ord, type = "samples", color = "Extraction",shape="Treatment")  + ggtitle("Bacterial Beta Diversity (PCoA) by Owner")
+plot_ordination(physeq.prune.rarefy, physeq.prune.rarefy.ps.ord, type = "samples", color = "Extraction",shape="Tissue")  + ggtitle("Bacterial Beta Diversity (PCoA) by Owner")
 ```
 
 ```{r fig.height=5, fig.width=8, fig.align="center"}
