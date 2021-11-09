@@ -1,0 +1,236 @@
+---
+title: "Pilot ECDRE ITS comparison"
+author: "Jason Stajich"
+date: "November 8, 2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = normalizePath(".."))
+min_read_count=1000
+```
+
+## Comparing the DNA extraction protocol and ITS profile
+
+```{r warning=FALSE, message=FALSE}
+library(ape)
+library(vegan)
+library(dplyr)
+library(scales)
+library(grid)
+library(reshape2)
+library(phyloseq)
+library(magrittr)
+library(ggplot2)
+library(ggpubr)
+library(plyr)
+library(data.table)
+library(tidyr)
+library(tidyverse)
+```
+###STEP2: Import Mapping file (metadate file)
+1.Check mapping file before import to R, R doesn’t seem to like sample name to start with number or contain “-” in sample name. If you get error in this step, you should check file name first.
+
+2.First column of first row should not start with #, R will not read the first row that starts with #
+
+```{r}
+metatable = file.path(knitr::opts_chunk$get("root.dir"),"Pilot_ITS.mapping_file.txt")
+meta = read.table(metatable,header=TRUE,row.names=1,sep=",",stringsAsFactors=FALSE)
+rownames(meta) <- gsub('-','.',rownames(meta))
+```
+
+If need to keep or remove some samples
+```{r}
+meta <- meta[which(meta$DemuxReads > min_read_count),]
+```
+
+###STEP3: Check if your metadata file has been import successfully and correctly
+
+The output will show a table of your metadata file (mapping file).
+
+*If you do not have header, you might have started your first row with #
+
+```{r warning=FALSE}
+head(meta)
+```
+
+###STEP4: Construct sample_data-class using imported metadata
+
+```{r}
+sampleData <- sample_data(meta)
+```
+
+###STEP5: Import OTU table
+
+OTU table from  ITS data is “MC2017FC.otu_table.txt”.
+MC-Mojave Crust-2017-FC-Fungi completed
+
+```{r}
+otutable <- file.path(knitr::opts_chunk$get("root.dir"), "Pilot_ITS.otu_table.txt")
+otus <- read.table(otutable,header=T,sep="\t",row.names=1)
+otumat <- as(as.matrix(otus), "matrix")
+OTU = otu_table(otumat, taxa_are_rows = TRUE)
+```
+
+Check imported OTU table
+
+```{r warning=FALSE}
+head(OTU)
+```
+
+###STEP6: Import taxonomy table
+Taxonmy table generated from AMPtk need to be rearranged using following script.
+
+“perl rdp_taxonmy2mat.pl<Input_taxonmy.txt>Output_taxonomy.txt”
+
+rdp_taxonomy2mat.pl was created by Professor Jason E. Stajich
+
+```{r}
+taxin = file.path(knitr::opts_chunk$get("root.dir"),"Pilot_ITS.cluster.taxonomy.fix.txt")
+taxmat <- read.table(taxin, header=T,sep="\t",row.names=1)
+taxmat <- as(as.matrix(taxmat),"matrix")
+TAX = tax_table(taxmat)
+```
+
+###STEP7: Import phylogenetic tree
+Phylogenetic tree can also be include for further phylogenetic analysis.
+
+```{r warning=FALSE}
+treefile = file.path(knitr::opts_chunk$get("root.dir"),"Pilot_ITS.cluster.tree.phy")
+tree = read.tree(treefile)
+```
+
+###STEP8: Construct Phyloseq object
+To construct phyloseq object, otu table, taxonomy table, and sampleData are required. Phylogenetic tree can be included, but it is not necessary for constructing phyloseq object.
+Construct Phyloseq object called "Physeq"
+
+```{r warning=FALSE}
+physeq = phyloseq(OTU,TAX,sampleData,tree)
+```
+
+Check phyloseq object
+This should indicate that your physeq is a "phyloseq-class experiment-level object""
+
+```{r warning=FALSE}
+physeq
+```
+
+###STEP9: Remove singletons
+Remove any OTUs that present only one time.
+
+```{r }
+physeq.prune = prune_taxa(taxa_sums(physeq) > 1, physeq)
+```
+
+```{r warning=FALSE}
+physeq.prune
+```
+
+###STEP10: Plot read counts to check dataset
+Check read counts: any samples that have very low reads should be removed.
+[Ref](http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-01-Answers.html)
+
+```{r}
+readcount = data.table(as(sample_data(physeq.prune), "data.frame"),
+                 TotalReads = sample_sums(physeq.prune), 
+                 keep.rownames = TRUE)
+setnames(readcount, "rn", "SampleID")
+#For plotting, use command below.
+#SeqDepth = ggplot(readcount, aes(TotalReads)) + geom_histogram() + ggtitle("Sequencing Depth")
+```
+
+TotalReads of all the samples can be in this table (select only SampleID and TotalReads columns).
+In order to check samples with low number of reads, "order()" can be used to sort "TotalReads" column.
+In this dataset, N55.Rhizo has very low number of reads, so will will filter this sample out using the next minimum number of reads.
+```{r}
+readcount = readcount[order(readcount$TotalReads), c("SampleID", "TotalReads")]
+```
+
+```{r}
+head(readcount)
+```
+
+```{r warning=FALSE}
+set.seed(1)
+physeq.prune.rarefy = rarefy_even_depth(physeq.prune, sample.size = 2000, replace = FALSE, trimOTUs = FALSE)
+physeq.prune.rarefy
+```
+
+###STEP11.1: Plot Alpha diversity by Crust_type
+Alpha diversity can be Chao1, Observed, Shannon, Simpson
+This plot include statistical analysis using "stat_compare_means" with "method = anova"
+
+
+###STEP12.1 Taxonomic composition
+
+```{r}
+FPhylum = as.character(get_taxa_unique(physeq.prune.rarefy,"Phylum"))
+FPhylum = FPhylum[complete.cases(FPhylum)]
+FPhylum
+```
+
+```{r fig.align='center'}
+plot_richness(physeq.prune.rarefy, x = "ExtractByTmt", color = "ExtractByTmt", measures = c("Shannon")) + 
+  geom_boxplot() +
+  theme_bw() + ggtitle("Alpha diversity plot by sample (Shannon)") + 
+  theme(plot.title = element_text(hjust = 0.5),
+         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  geom_point(size=5, alpha=0.8)
+```
+
+###STEP12:Taxonomy Barplot
+
+Taxonomy barplot by sample (Class level)
+
+```{r fig.align='center'}
+plot_bar(physeq.prune.rarefy, x = "Sample", y = "Abundance", fill ="Class") + 
+  geom_bar(aes(color=Class, fill=Class), stat="identity", position="stack") +
+  ggtitle("Taxonomy barplot by sample (Phylum Class)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+###Beta Diversity
+
+```{r}
+physeq.prune.rarefy.ps.ord <- ordinate(physeq.prune.rarefy, "PCoA", "unifrac")
+```
+
+```{r}
+plot_ordination(physeq.prune.rarefy, physeq.prune.rarefy.ps.ord, type = "samples", color = "Extraction",shape="Treatment")  + ggtitle("Bacterial Beta Diversity (PCoA) by Owner")
+```
+
+```{r fig.height=5, fig.width=8, fig.align="center"}
+taxcom_treatment = ggplot(data = psmelt(physeq.prune.rarefy), mapping = aes_string(x = "ExtractByTmt",
+                                                                                   y = "Abundance", 
+                                                                                   fill = "Phylum" )) + 
+  geom_bar(stat="identity", position="fill") + 
+  ggtitle("Bacteria from pilot study")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+                     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)
+                     ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+print(taxcom_treatment)
+```
+
+Save plot
+```{r}
+pdf("../Figures/Plot_name.pdf", width = 6, height = 3.8)
+print(taxcom_treatment)
+dev.off()
+```
+
+###Plot Alpha Diversity (Species richness)
+
+```{r}
+physeq.prune.rarefy.plot.richness = plot_richness(physeq.prune.rarefy, x="Treatment", color=("Extraction"), measures=c("Observed")) + geom_boxplot(lwd=0.5) + ggtitle("Alpha Diversity by Treatment") + stat_compare_means(method = "t.test", label.x.npc = c("right")) + theme_bw() + scale_colour_brewer(palette="Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+physeq.prune.rarefy.plot.richness + theme(plot.title = element_text(hjust = 0.5))
+```
+
+
